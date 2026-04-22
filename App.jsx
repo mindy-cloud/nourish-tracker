@@ -11,23 +11,17 @@ const TARGETS = {
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 async function parseMealWithAI(text) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch(GEMINI_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages: [{
-        role: "user",
-        content: `You are a nutrition expert. Parse this food log entry and return ONLY a JSON object, no markdown, no explanation.
+      contents: [{
+        parts: [{
+          text: `You are a nutrition expert. Parse this food log entry and return ONLY a JSON object, no markdown, no explanation.
 
 Input: "${text}"
 
@@ -48,33 +42,26 @@ Rules:
 - For chia seeds (1 tbsp): 60 cal, 2g protein, 5g carbs, 4g fat, 5g fiber
 - Return whole numbers for all macros
 - If amount unclear, use standard serving sizes`
+        }]
       }]
     })
   });
   const data = await res.json();
-  const raw = data.content?.[0]?.text || "{}";
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   try {
     return JSON.parse(raw.replace(/```json|```/g, "").trim());
   } catch { return null; }
 }
 
 async function analyzeWorkoutPhoto(base64, mediaType) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch(GEMINI_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          { type: "text", text: `This is a workout log. Extract every exercise, set, rep count, and weight visible. Return ONLY JSON, no markdown:
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: mediaType, data: base64 } },
+          { text: `This is a workout log. Extract every exercise, set, rep count, and weight visible. Return ONLY JSON, no markdown:
 {
   "type": "strength",
   "exercises": [{ "name": "exercise name", "sets": number_or_null, "reps": "reps string", "weight": "weight string or null", "notes": "" }],
@@ -87,7 +74,7 @@ If the image is unclear, do your best to extract what is visible.` }
     })
   });
   const data = await res.json();
-  const raw = data.content?.[0]?.text || "{}";
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   try {
     return JSON.parse(raw.replace(/```json|```/g, "").trim());
   } catch { return { type: "strength", exercises: [], summary: "Workout logged from photo" }; }
@@ -127,7 +114,7 @@ export default function App() {
   const [lastAdded, setLastAdded] = useState(null);
   const [error, setError] = useState("");
   const [waterInput, setWaterInput] = useState(8);
-  const [noApiKey, setNoApiKey] = useState(!ANTHROPIC_API_KEY);
+  const [noApiKey, setNoApiKey] = useState(!GEMINI_API_KEY);
   const recognitionRef = useRef(null);
   const photoInputRef = useRef(null);
   const dateKey = todayKey();
@@ -164,7 +151,7 @@ export default function App() {
     recognitionRef.current?.stop();
     setIsListening(false);
     if (!transcript.trim()) return;
-    if (noApiKey) { setError("Add your VITE_ANTHROPIC_API_KEY to the .env file first."); return; }
+    if (noApiKey) { setError("Add your VITE_GEMINI_API_KEY to Vercel environment variables first."); return; }
     setIsProcessing(true); setError("");
     try {
       const result = await parseMealWithAI(transcript);
@@ -184,7 +171,7 @@ export default function App() {
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (noApiKey) { setError("Add your VITE_ANTHROPIC_API_KEY to the .env file first."); return; }
+    if (noApiKey) { setError("Add your VITE_GEMINI_API_KEY to Vercel environment variables first."); return; }
     setIsAnalyzingPhoto(true); setError("");
     try {
       const base64 = await new Promise((res, rej) => {
@@ -263,7 +250,7 @@ export default function App() {
       {/* API Key warning banner */}
       {noApiKey && (
         <div style={{ background: "#2d1a00", borderBottom: "1px solid #c8a96e40", padding: "10px 20px", fontSize: 12, color: "#c8a96e", lineHeight: 1.5 }}>
-          ⚠️ <strong>API key missing.</strong> Add <code>VITE_ANTHROPIC_API_KEY=your_key</code> to a <code>.env</code> file in the project root, then restart the dev server.
+          ⚠️ <strong>API key missing.</strong> Add <code>VITE_GEMINI_API_KEY=your_key</code> to a <code>.env</code> file in the project root, then restart the dev server.
         </div>
       )}
 
