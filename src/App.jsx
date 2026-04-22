@@ -130,12 +130,18 @@ export default function App() {
     setWeekData(loadWeekSummary());
   }, [dateKey]);
 
+  const transcriptRef = useRef("");
+
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setError("Voice not supported in this browser. Try Chrome or Safari."); return; }
     const rec = new SR();
-    rec.continuous = false; rec.interimResults = true; rec.lang = "en-US";
-    rec.onresult = (e) => setTranscript(Array.from(e.results).map(r => r[0].transcript).join(" "));
+    rec.continuous = true; rec.interimResults = true; rec.lang = "en-US";
+    rec.onresult = (e) => {
+      const text = Array.from(e.results).map(r => r[0].transcript).join(" ");
+      transcriptRef.current = text;
+      setTranscript(text);
+    };
     rec.onend = () => setIsListening(false);
     rec.onerror = (ev) => {
       setIsListening(false);
@@ -144,22 +150,24 @@ export default function App() {
     };
     rec.start();
     recognitionRef.current = rec;
+    transcriptRef.current = "";
     setIsListening(true); setTranscript(""); setError("");
   };
 
   const stopAndParse = async () => {
     recognitionRef.current?.stop();
     setIsListening(false);
-    if (!transcript.trim()) return;
+    const finalTranscript = transcriptRef.current;
+    if (!finalTranscript.trim()) return;
     if (noApiKey) { setError("Add your VITE_GEMINI_API_KEY to Vercel environment variables first."); return; }
     setIsProcessing(true); setError("");
     try {
-      const result = await parseMealWithAI(transcript);
+      const result = await parseMealWithAI(finalTranscript);
       if (!result?.totals) { setError("Couldn't parse that. Try again with more detail."); return; }
-      const meal = { id: Date.now(), time: new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}), raw: transcript, summary: result.summary, items: result.items || [], totals: result.totals };
+      const meal = { id: Date.now(), time: new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}), raw: finalTranscript, summary: result.summary, items: result.items || [], totals: result.totals };
       const updated = { ...dayData, meals: [...dayData.meals, meal] };
       saveDayData(updated);
-      setLastAdded(meal); setTranscript("");
+      setLastAdded(meal); setTranscript(""); transcriptRef.current = "";
     } catch (err) { setError("AI parsing failed. Check your API key and connection."); }
     finally { setIsProcessing(false); }
   };
